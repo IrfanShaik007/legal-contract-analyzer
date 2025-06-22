@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Legal Contract Analyzer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    function showLoader() {
+      document.getElementById('loader').classList.remove('hidden');
+      document.getElementById('uploadBtn').disabled = true;
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const dropzone = document.getElementById("dropzone");
+      const fileInput = document.getElementById("file");
+      const fileNameDisplay = document.getElementById("file-name-display");
+
+      dropzone.addEventListener("click", () => fileInput.click());
+      dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropzone.classList.add("border-blue-500", "bg-blue-50");
+      });
+      dropzone.addEventListener("dragleave", () => {
+        dropzone.classList.remove("border-blue-500", "bg-blue-50");
+      });
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        fileInput.files = e.dataTransfer.files;
+        dropzone.classList.remove("border-blue-500", "bg-blue-50");
+        fileNameDisplay.textContent = fileInput.files[0].name;
+      });
+
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files.length > 0) {
+          fileNameDisplay.textContent = fileInput.files[0].name;
+        }
+      });
+    });
+  </script>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans">
+
+  <section class="bg-gradient-to-br from-blue-600 to-blue-400 text-white py-16 px-6">
+    <div class="max-w-4xl mx-auto text-center animate-fade-in">
+      <h1 class="text-4xl font-bold mb-4">Legal Contract Analyzer</h1>
+      <p class="text-lg text-blue-100">Upload your legal documents and extract key clauses instantly using AI-powered analysis.</p>
+    </div>
+  </section>
+
+  <section class="py-16 px-6 animate-fade-in">
+    <div class="max-w-xl mx-auto bg-white rounded-xl shadow-md p-8">
+      <h2 class="text-2xl font-bold text-center mb-6">Upload Your Contract</h2>
+      <form id="form" method="post" enctype="multipart/form-data" onsubmit="showLoader()">
+        <input type="file" name="file" id="file" accept=".pdf,.docx,.txt" required class="hidden">
+        <div id="dropzone" class="w-full border-2 border-dashed border-gray-300 rounded-md p-6 text-center text-gray-500 cursor-pointer transition hover:border-blue-500 hover:bg-blue-50">
+          Drag & Drop your file here or click to select
+        </div>
+        <p id="file-name-display" class="text-center text-sm text-gray-600 mt-2"></p>
+        <button type="submit" id="uploadBtn" class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition">
+          Analyze Document
+        </button>
+      </form>
+
+      <div id="loader" class="hidden mt-4 flex items-center justify-center">
+        <div class="w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+        <span class="text-sm text-gray-600">Analyzing document, please wait...</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-center text-sm text-gray-500 py-6">
+    &copy; 2025 Legal AI Tools. Built for smarter legal understanding.
+  </footer>
+</body>
+</html>
