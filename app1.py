@@ -132,6 +132,6 @@ if uploaded_file and st.button("Analyze Document"):
                 st.markdown(f"**{label}**")
                 st.info(explanation)
         else:
-            st.info("No key clauses were extracted or explained from the document.")
+            st.info("key clauses were extracted or explained from the document.")
     else:
         st.error("Could not extract text from the uploaded file.")
