@@ -7,12 +7,13 @@ import torch
 from transformers import BertTokenizer, BertForSequenceClassification
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
-load_dotenv()
-# Load the model
-model_name = "legalbert-cuad"  # Replace with your HuggingFace model name
 
+load_dotenv()
+
+model_name = "Irfanshareef05/legal-contract-label"
 tokenizer = BertTokenizer.from_pretrained(model_name)
 model = BertForSequenceClassification.from_pretrained(model_name)
+
 model.eval()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
@@ -57,7 +58,7 @@ def predict_labels(text):
     return [label for label, count in sorted_labels]
 
 def generate_summary(text):
-    api_key = os.getenv("GOOGLE_API_KEY")
+    api_key = st.secrets["GOOGLE_API_KEY"]
     if not api_key:
         return "Missing Gemini API key."
 
