@@ -1,50 +1,42 @@
 import streamlit as st
-import torch
-from transformers import BertTokenizerFast, BertForSequenceClassification
-from PyPDF2 import PdfReader
-import docx
 import os
+import docx
 import json
 import requests
+import torch
+from transformers import BertTokenizer, BertForSequenceClassification
+from PyPDF2 import PdfReader
+from dotenv import load_dotenv
 
-# Load secret API key from Streamlit secrets
-GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+load_dotenv()
 
-# Load model & tokenizer (CPU, float16, low mem)
-@st.cache_resource
-def load_model():
-    model_name = "Irfanshareef05/legal-contract-label"
-    tokenizer = BertTokenizerFast.from_pretrained(model_name)
-    model = BertForSequenceClassification.from_pretrained(
-        model_name,
-        torch_dtype=torch.float16,
-        low_cpu_mem_usage=True
-    ).to("cpu")
-    model.eval()
-    return tokenizer, model
+model_name = "Irfanshareef05/legal-contract-label"
+tokenizer = BertTokenizer.from_pretrained(model_name)
+model = BertForSequenceClassification.from_pretrained(model_name)
 
-tokenizer, model = load_model()
+model.eval()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
 
-# File type checker
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {"pdf", "docx", "txt"}
+st.set_page_config(page_title="Legal Contract Analyzer", layout="wide")
+st.title("📄 Legal Contract Analyzer")
+st.markdown("Upload a legal document to extract and explain key clauses using AI.")
 
-# Text extractor
-def extract_text(file):
-    ext = file.name.rsplit('.', 1)[-1].lower()
-    if ext == "pdf":
-        reader = PdfReader(file)
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    elif ext == "docx":
-        doc = docx.Document(file)
+# Helper Functions
+
+def extract_text_from_file(uploaded_file):
+    if uploaded_file.name.endswith(".pdf"):
+        reader = PdfReader(uploaded_file)
+        return "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+    elif uploaded_file.name.endswith(".docx"):
+        doc = docx.Document(uploaded_file)
         return "\n".join([p.text for p in doc.paragraphs])
-    elif ext == "txt":
-        return file.read().decode("utf-8")
+    elif uploaded_file.name.endswith(".txt"):
+        return uploaded_file.read().decode("utf-8")
     return ""
 
-# Clause label predictor
 def predict_labels(text):
-    max_tokens = 256
+    max_tokens = 512
     words = text.split()
     chunks = [" ".join(words[i:i + max_tokens]) for i in range(0, len(words), max_tokens)]
 
@@ -52,8 +44,8 @@ def predict_labels(text):
     id2label = model.config.id2label
 
     for chunk in chunks:
-        inputs = tokenizer(chunk, return_tensors="pt", truncation=True, padding=True, max_length=max_tokens)
-        inputs = {k: v.to("cpu") for k, v in inputs.items()}
+        inputs = tokenizer(chunk, return_tensors="pt", truncation=True, padding=True, max_length=512)
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         with torch.no_grad():
             outputs = model(**inputs)
             probs = torch.sigmoid(outputs.logits)
@@ -63,15 +55,18 @@ def predict_labels(text):
                 label_counts[label] = label_counts.get(label, 0) + 1
 
     sorted_labels = sorted(label_counts.items(), key=lambda x: x[1], reverse=True)
-    return [label for label, _ in sorted_labels]
+    return [label for label, count in sorted_labels]
 
-# Gemini summary
 def generate_summary(text):
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    if not api_key:
+        return "Missing Gemini API key."
+
+    text = text[:4000]
     try:
-        text = text[:3000]  # Trim for safety
         response = requests.post(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-            params={"key": GOOGLE_API_KEY},
+            params={"key": api_key},
             json={
                 "contents": [{
                     "role": "user",
@@ -83,66 +78,60 @@ def generate_summary(text):
         )
         if response.status_code == 200:
             return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-        else:
-            return "Gemini summarization failed."
+        return f"Gemini failed: {response.status_code}"
     except Exception as e:
-        return f"Summary error: {str(e)}"
+        return f"Error: {str(e)}"
 
-# Gemini label explanation
 def generate_label_analyses(labels):
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return []
+
+    prompt = "\n".join([f"Explain the '{label}' clause in a legal contract." for label in labels])
     try:
-        if not labels:
-            return []
-        prompt = "\n".join([f"Explain the '{label}' clause in a legal contract." for label in labels])
         response = requests.post(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-            params={"key": GOOGLE_API_KEY},
-            json={"contents": [{"role": "user", "parts": [{"text": prompt}]}]},
+            params={"key": api_key},
+            json={
+                "contents": [{
+                    "role": "user",
+                    "parts": [{"text": prompt}]
+                }]
+            },
             headers={"Content-Type": "application/json"},
             timeout=20
         )
         if response.status_code == 200:
             full_text = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
             raw_analyses = full_text.split("\n")
-            filtered = []
-            for label, analysis in zip(labels, raw_analyses):
-                if analysis.strip():
-                    filtered.append((label, analysis.strip()))
-            return filtered
-        else:
-            return []
-    except Exception:
+            return [(label, desc.strip()) for label, desc in zip(labels, raw_analyses)]
+        return []
+    except:
         return []
 
-# Streamlit UI
-st.set_page_config(page_title="Legal Clause Analyzer", layout="centered")
-st.title("📄 Legal Contract Clause Analyzer")
-st.write("Upload a legal contract to classify its clauses and get insights.")
-
-uploaded_file = st.file_uploader("Upload a contract file (PDF, DOCX, or TXT)", type=["pdf", "docx", "txt"])
-
-if uploaded_file and allowed_file(uploaded_file.name):
-    with st.spinner("Extracting and analyzing clauses..."):
-        text = extract_text(uploaded_file)
-        if not text.strip():
-            st.error("No readable text found.")
-        else:
+# Upload and Analyze
+uploaded_file = st.file_uploader("Upload PDF, DOCX, or TXT file", type=["pdf", "docx", "txt"])
+if uploaded_file and st.button("Analyze Document"):
+    text = extract_text_from_file(uploaded_file)
+    if text:
+        with st.spinner("Predicting clause labels..."):
             labels = predict_labels(text)
+        with st.spinner("Generating summary..."):
             summary = generate_summary(text)
+        with st.spinner("Analyzing clauses using Gemini..."):
             analyses = generate_label_analyses(labels)
 
-            st.subheader("🔍 Contract Summary")
-            st.write(summary)
+        st.subheader("📋 Contract Summary")
+        st.write(summary)
 
-            st.subheader("📌 Detected Clause Labels")
-            st.write(", ".join(labels) if labels else "No clauses detected.")
-
-            if analyses:
-                st.subheader("📘 Clause Explanations")
-                for label, desc in analyses:
-                    st.markdown(f"**{label}**")
-                    st.write(desc)
-            else:
-                st.warning("No detailed clause explanations available.")
-else:
-    st.info("Please upload a valid legal document.")
+        # ✅ Only show clauses if analyses are returned and valid
+        valid_analyses = [(label, explanation) for label, explanation in analyses if explanation.strip()]
+        if valid_analyses:
+            st.subheader("📑 Key Clauses")
+            for label, explanation in valid_analyses:
+                st.markdown(f"**{label}**")
+                st.info(explanation)
+        else:
+            st.info("key clauses were extracted or explained from the document.")
+    else:
+        st.error("Could not extract text from the uploaded file.")
