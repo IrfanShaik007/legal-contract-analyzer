@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.ipynb
+.git/
+.gitignore
+venv/
+uploads/
+*.log
+*.DS_Store
+*.zip
+*.tar.gz
+*.txt
+*.html
+*.pdf
+*.docx

@@ -11,14 +11,16 @@ import json
 from dotenv import load_dotenv
 load_dotenv()
 
+# Load Gemini API key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-model_path = "legalbert-cuad"
+# Hugging Face model path
+model_path = "Irfanshareef05/legal-contract-label"
 tokenizer = BertTokenizer.from_pretrained(model_path)
 model = BertForSequenceClassification.from_pretrained(model_path)
 model.eval()
 
-# Setup GPU if available
+# Setup device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
@@ -118,9 +120,8 @@ def generate_label_analyses(labels):
             filtered = []
             for label, analysis in zip(labels, raw_analyses):
                 analysis = analysis.strip()
-                if not analysis or "Gemini failed" in analysis or "Error" in analysis:
-                    continue
-                filtered.append((label, analysis))
+                if analysis:
+                    filtered.append((label, analysis))
             return filtered
         else:
             return []
